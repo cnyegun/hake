@@ -2,36 +2,68 @@ import System.Process ( callCommand )
 import System.Directory ( doesFileExist, getModificationTime )
 import Control.Monad ( filterM, when, unless )
 import System.Exit ( exitFailure, exitSuccess )
+import qualified Data.Map.Strict as Map
 
-build :: String -> IO ()
-build action = do
-    callCommand action
-    putStrLn "Build complete."
+type Target = FilePath
+type Dep = FilePath
+type Action = String
 
-checkFreshTarget :: FilePath -> [FilePath] -> IO Bool
+data Rule = Rule
+  { target :: Target
+  , deps   :: [Dep]
+  , action :: Action
+  }
+
+type BuildSpec = Map.Map Target Rule
+
+checkFreshTarget :: Target -> [Dep] -> IO Bool
 checkFreshTarget target deps = do
-    targetTime <- getModificationTime target
-    depTimes <- traverse getModificationTime deps
-    pure $ all (<= targetTime) depTimes
+  targetTime <- getModificationTime target
+  depTimes <- traverse getModificationTime deps
+  pure $ all (<= targetTime) depTimes
+
+ruleOut :: Rule 
+ruleOut = Rule
+          { target = "test.out"
+          , deps = ["test.o"]
+          , action = "gcc test.o -o test.out"
+          }
+
+ruleObj :: Rule
+ruleObj = Rule
+          { target = "test.o"
+          , deps = ["test.c"]
+          , action = "gcc -c test.c -o test.o"
+          }
+
+spec :: BuildSpec
+spec = Map.fromList
+      [ ("test.out", ruleOut)
+      , ("test.o", ruleObj)
+      ]
+
+getRule :: Target -> BuildSpec -> Maybe Rule
+getRule = Map.lookup
+
+build :: Target -> BuildSpec -> IO ()
+build t sp = do
+  case getRule t sp of 
+    Just rule -> do 
+                mapM_ (`build` sp) (deps rule)
+                targetExists <- doesFileExist t
+                isFresh <- if targetExists then checkFreshTarget t (deps rule)
+                            else pure False
+
+                unless isFresh $ do
+                      callCommand (action rule)
+
+    Nothing   -> do 
+                fileExists <- doesFileExist t
+                unless fileExists $ do
+                  putStrLn ("No rule found for " ++ t ++ ".")
+                  exitFailure
 
 main :: IO ()
 main = do
-    let target = "test.out"
-    let prerequisites = ["test.c"]
-    let actionCmd = "gcc " ++ unwords prerequisites ++ " -o " ++ target
-
-    missingFiles <- filterM (fmap not . doesFileExist) prerequisites
-
-    unless (null missingFiles) $ do
-        putStrLn ("Missing files: " ++ unwords missingFiles)
-        exitFailure
-
-    targetExist <- doesFileExist target
-    
-    when targetExist $ do
-        targetIsFresh <- checkFreshTarget target prerequisites
-        when targetIsFresh $ do
-            putStrLn "Up to date."
-            exitSuccess
-    
-    build actionCmd
+  result <- build "test.out" spec
+  exitSuccess
