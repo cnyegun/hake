@@ -1,6 +1,6 @@
 import System.Process ( callCommand )
 import System.Directory ( doesFileExist, getModificationTime )
-import Control.Monad ( filterM, when, unless )
+import Control.Monad ( unless )
 import System.Exit ( exitFailure, exitSuccess )
 import qualified Data.Map.Strict as Map
 
@@ -55,7 +55,9 @@ build t sp = do
                             else pure False
 
                 unless isFresh $ do
-                      callCommand (action rule)
+                  putStrLn (action rule) 
+                  callCommand (action rule)
+
 
     Nothing   -> do 
                 fileExists <- doesFileExist t
@@ -65,5 +67,5 @@ build t sp = do
 
 main :: IO ()
 main = do
-  result <- build "test.out" spec
+  build "test.out" spec
   exitSuccess
