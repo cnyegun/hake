@@ -25,3 +25,4 @@ cabal.project.local~
 # Local build outputs
 app/Main
 app/*.out
+app/*.c
